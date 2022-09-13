@@ -1,6 +1,11 @@
 name: Automated release
 description: "Action used for automated releases bumping version based on commit message"
 
+outputs:
+  version:
+    description: Rleased version
+    value: ${{ steps.release.outputs.tag_name }}
+
 runs:
   using: "composite"
   steps:
@@ -13,6 +18,7 @@ runs:
           echo "::set-output name=release_type::${RELEASE_TYPE}"
 
       - name: Release
+        id: release
         if: ${{ steps.commit_msg.outputs.release_type }}
         uses: rymndhng/release-on-push-action@master
         with:
