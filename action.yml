@@ -24,4 +24,4 @@ runs:
         with:
           tag_prefix: v
           bump_version_scheme: ${{ steps.commit_msg.outputs.release_type }}
-          release_name: "Composite actions release <RELEASE_VERSION>"
+          release_name: "Release <RELEASE_VERSION>"
