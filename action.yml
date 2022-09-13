@@ -1,0 +1,21 @@
+name: Automated release
+description: "Action used for automated releases bumping version based on commit message"
+
+runs:
+  using: "composite"
+  steps:
+      - name: Check head commit message
+        id: commit_msg
+        shell: bash
+        run: |
+          RELEASE_TYPE=$(echo "${{ github.event.head_commit.message }}" | grep -Po "\[(minor|major|patch)\]" || true) 
+          [ ${RELEASE_TYPE} ] && RELEASE_TYPE=$(echo ${RELEASE_TYPE} | grep -Po "(minor|major|patch)")
+          echo "::set-output name=release_type::${RELEASE_TYPE}"
+
+      - name: Release
+        if: ${{ steps.commit_msg.outputs.release_type }}
+        uses: rymndhng/release-on-push-action@master
+        with:
+          tag_prefix: v
+          bump_version_scheme: ${{ steps.commit_msg.outputs.release_type }}
+          release_name: "Composite actions release <RELEASE_VERSION>"
