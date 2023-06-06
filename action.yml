@@ -13,7 +13,11 @@ runs:
         id: commit_msg
         shell: bash
         run: |
-          RELEASE_TYPE=$(echo '${{ github.event.head_commit.message }}' | grep -Po "\[(minor|major|patch)\]" || true) 
+          cat > /tmp/commit-msg.txt  <<ENDcommitMSG
+          ${{ github.event.head_commit.message }}
+          ENDcommitMSG
+
+          RELEASE_TYPE=$(cat /tmp/commit-msg.txt | grep -Po "\[(minor|major|patch)\]" || true) 
           [ ${RELEASE_TYPE} ] && RELEASE_TYPE=$(echo ${RELEASE_TYPE} | grep -Po "(minor|major|patch)")
           echo "::set-output name=release_type::${RELEASE_TYPE}"
 
@@ -25,3 +29,8 @@ runs:
           tag_prefix: v
           bump_version_scheme: ${{ steps.commit_msg.outputs.release_type }}
           release_name: "Release <RELEASE_VERSION>"
+
+      - name: Test
+        shell: bash 
+        run: |
+          echo ${{ steps.release.outputs.tag_name }}
