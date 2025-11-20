@@ -1,27 +1,103 @@
 name: Automated release
 description: "Action used for automated releases bumping version based on commit message"
 
+inputs:
+  tag_prefix:
+    default: "v"
+    description: "Prefix for Git Tag created on release"
+  dry_run:
+    description: "When set to 'true', will compute the next tag, but will not create a release"
+    default: "false"
+  add_tags:
+    description: "When set to 'true', will add git tags on latest commit for minor and major version (e.g release v1.1.0 will add tags v1.1 and v1)"
+    default: "true"
 outputs:
   version:
-    description: Rleased version
+    description: Released version
     value: ${{ steps.release.outputs.tag_name }}
 
 runs:
   using: "composite"
   steps:
-      - name: Check head commit message
-        id: commit_msg
-        shell: bash
-        run: |
-          RELEASE_TYPE=$(echo '${{ github.event.head_commit.message }}' | grep -Po "\[(minor|major|patch)\]" || true) 
-          [ ${RELEASE_TYPE} ] && RELEASE_TYPE=$(echo ${RELEASE_TYPE} | grep -Po "(minor|major|patch)")
-          echo "::set-output name=release_type::${RELEASE_TYPE}"
+    - name: Get PR labels
+      uses: joerick/pr-labels-action@v1.0.9
+      if: github.event.pull_request.merged == true
+      id: pr-labels
 
-      - name: Release
-        id: release
-        if: ${{ steps.commit_msg.outputs.release_type }}
-        uses: rymndhng/release-on-push-action@master
-        with:
-          tag_prefix: v
-          bump_version_scheme: ${{ steps.commit_msg.outputs.release_type }}
-          release_name: "Release <RELEASE_VERSION>"
+    - name: Check head commit message
+      id: commit_msg
+      shell: bash
+      env:
+        COMMIT_MSG: ${{ github.event.head_commit.message }}
+        COMMITS_URL: ${{ github.event.pull_request.commits_url }}
+      run: |
+        if [ "${GITHUB_PR_LABEL_MAJOR}" == "1" ]; then
+          RELEASE_TYPE="major"
+        elif [ "${GITHUB_PR_LABEL_MINOR}" == "1" ]; then
+          RELEASE_TYPE="minor"
+        elif [ "${GITHUB_PR_LABEL_PATCH}" == "1" ]; then
+          RELEASE_TYPE="patch"
+        fi
+
+        if [ "${{ github.event.pull_request.merged }}" != "true" ] && [ -z "${RELEASE_TYPE}" ]; then
+
+          # Get commit messages from PR, mostly useful for testing
+          if [ -n "${COMMITS_URL}" ]; then
+            OUTPUT_FILE="/tmp/gh_response.json"
+            RESPONSE_CODE=$(curl -H "Authorization: token ${GITHUB_TOKEN}" --silent --output "${OUTPUT_FILE}" --write-out "%{http_code}" "${COMMITS_URL}?per_page=100")
+            if [ "${RESPONSE_CODE}" == "200" ]; then
+              COMMIT_MSG="${COMMIT_MSG} $(cat "${OUTPUT_FILE}" | jq -r .[].commit.message)"
+            fi
+          fi
+
+          RELEASE_TYPE=$(echo "${COMMIT_MSG}" | grep -Po "(?<=\[)(minor|major|patch)(?=\])" | head -n 1 || true)
+        fi
+        
+        echo "release_type=${RELEASE_TYPE}" >> ${GITHUB_OUTPUT}
+
+    - name: Prepare release name
+      id: release_nameLEASE_TAG>
+      shell: bash
+      run: |
+        NAME="$(echo -n '${{ github.repository }}' | sed 's/.*\///') release <RELEASE_VERSION> (<RELEASE_TAG>)"
+        echo "name=${NAME}" >> ${GITHUB_OUTPUT}
+
+    - name: Release
+      id: release
+      if: steps.commit_msg.outputs.release_type != ''
+      uses: rymndhng/release-on-push-action@v0.28.0
+      with:
+        tag_prefix: ${{ inputs.tag_prefix }}
+        dry_run: ${{ inputs.dry_run }}
+        bump_version_scheme: ${{ steps.commit_msg.outputs.release_type }}
+        release_name: ${{ steps.release_name.outputs.name }}
+
+    - name: Checkout repository
+      if: inputs.add_tags == 'true' && inputs.dry_run != 'true'
+      uses: actions/checkout@v4
+
+    - name: Add major and minor tags
+      if: inputs.add_tags == 'true' && inputs.dry_run != 'true'
+      shell: bash
+      run: |
+        git config --global user.name "Automated Release Action"
+        git config --global user.email "username@users.noreply.github.com"
+
+        add_move_tags () {
+          echo "Adding tag ${1}"
+          git fetch --tags --force
+          git tag -d ${1} || true
+          git push --delete origin ${1} || true
+          git tag -a ${1} -m "${1}"
+          git push origin ${1}
+        }
+
+        RELEASED_VERSION="${{ steps.release.outputs.tag_name }}"
+        if [ -z "${RELEASED_VERSION}" ]; then
+          echo "No release version found"
+          exit 0
+        fi
+        MINOR_VERSION="$(echo ${RELEASED_VERSION%.*})"
+        add_move_tags ${MINOR_VERSION}
+        MAJOR_VERSION="$(echo ${RELEASED_VERSION%.*.*})"
+        add_move_tags ${MAJOR_VERSION}
