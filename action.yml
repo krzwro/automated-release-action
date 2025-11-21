@@ -74,7 +74,7 @@ runs:
 
     - name: Checkout repository
       if: inputs.add_tags == 'true' && inputs.dry_run != 'true'
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Add major and minor tags
       if: inputs.add_tags == 'true' && inputs.dry_run != 'true'
