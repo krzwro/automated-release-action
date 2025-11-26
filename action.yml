@@ -56,7 +56,7 @@ runs:
         echo "release_type=${RELEASE_TYPE}" >> ${GITHUB_OUTPUT}
 
     - name: Prepare release name
-      id: release_nameLEASE_TAG>
+      id: release_name
       shell: bash
       run: |
         NAME="$(echo -n '${{ github.repository }}' | sed 's/.*\///') release <RELEASE_VERSION> (<RELEASE_TAG>)"
@@ -101,4 +101,3 @@ runs:
         add_move_tags ${MINOR_VERSION}
         MAJOR_VERSION="$(echo ${RELEASED_VERSION%.*.*})"
         add_move_tags ${MAJOR_VERSION}
-
