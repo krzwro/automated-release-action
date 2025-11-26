@@ -101,3 +101,4 @@ runs:
         add_move_tags ${MINOR_VERSION}
         MAJOR_VERSION="$(echo ${RELEASED_VERSION%.*.*})"
         add_move_tags ${MAJOR_VERSION}
+
