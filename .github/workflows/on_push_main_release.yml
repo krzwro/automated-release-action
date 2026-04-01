@@ -1,0 +1,27 @@
+name: Automated release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - action.yml
+  # pull_request:
+  #   branches:
+  #     - main
+  #   types:
+  #     - closed
+
+jobs:
+  release-on-push:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      ## This workflow uses action in this repo to release
+      - name: Release
+        id: release
+        uses: ./
