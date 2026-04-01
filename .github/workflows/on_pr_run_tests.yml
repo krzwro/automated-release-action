@@ -1,0 +1,166 @@
+name: On PR run tests
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - action.yml
+      - .github/workflows/on_pr_run_tests.yml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test-patch-bump:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run action with patch bump
+        uses: ./
+        id: release
+        env:
+          COMMIT_MSG: "[patch] test commit"
+        with:
+          dry_run: "true"
+
+      - name: Verify patch bump output
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          echo "Released version: ${VERSION}"
+          if [ -z "${VERSION}" ]; then
+            echo "::error::Expected a version output but got empty string"
+            exit 1
+          fi
+          if ! [[ "${VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '${VERSION}' does not match expected pattern vX.Y.Z"
+            exit 1
+          fi
+
+  test-minor-bump:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run action with minor bump
+        uses: ./
+        id: release
+        env:
+          COMMIT_MSG: "[minor] test commit"
+        with:
+          dry_run: "true"
+
+      - name: Verify minor bump output
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          echo "Released version: ${VERSION}"
+          if [ -z "${VERSION}" ]; then
+            echo "::error::Expected a version output but got empty string"
+            exit 1
+          fi
+          if ! [[ "${VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '${VERSION}' does not match expected pattern vX.Y.Z"
+            exit 1
+          fi
+
+  test-major-bump:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run action with major bump
+        uses: ./
+        id: release
+        env:
+          COMMIT_MSG: "[major] test commit"
+        with:
+          dry_run: "true"
+
+      - name: Verify major bump output
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          echo "Released version: ${VERSION}"
+          if [ -z "${VERSION}" ]; then
+            echo "::error::Expected a version output but got empty string"
+            exit 1
+          fi
+          if ! [[ "${VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '${VERSION}' does not match expected pattern vX.Y.Z"
+            exit 1
+          fi
+
+  test-no-release:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run action without release tag
+        uses: ./
+        id: release
+        env:
+          COMMIT_MSG: "regular commit without bump tag"
+        with:
+          dry_run: "true"
+
+      - name: Verify no version output
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          if [ -n "${VERSION}" ]; then
+            echo "::error::Expected empty version output but got '${VERSION}'"
+            exit 1
+          fi
+          echo "Correctly produced no release"
+
+  test-custom-prefix:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run action with custom tag prefix
+        uses: ./
+        id: release
+        env:
+          COMMIT_MSG: "[patch] test commit"
+        with:
+          dry_run: "true"
+          tag_prefix: "release-"
+
+      - name: Verify custom prefix in output
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          echo "Released version: ${VERSION}"
+          if ! [[ "${VERSION}" =~ ^release-[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '${VERSION}' does not use custom prefix 'release-'"
+            exit 1
+          fi

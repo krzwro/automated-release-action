@@ -55,22 +55,60 @@ runs:
         
         echo "release_type=${RELEASE_TYPE}" >> ${GITHUB_OUTPUT}
 
-    - name: Prepare release name
-      id: release_name
-      shell: bash
-      run: |
-        NAME="$(echo -n '${{ github.repository }}' | sed 's/.*\///') release <RELEASE_VERSION> (<RELEASE_TAG>)"
-        echo "name=${NAME}" >> ${GITHUB_OUTPUT}
-
     - name: Release
       id: release
       if: steps.commit_msg.outputs.release_type != ''
-      uses: rymndhng/release-on-push-action@v0.28.0
-      with:
-        tag_prefix: ${{ inputs.tag_prefix }}
-        dry_run: ${{ inputs.dry_run }}
-        bump_version_scheme: ${{ steps.commit_msg.outputs.release_type }}
-        release_name: ${{ steps.release_name.outputs.name }}
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        TAG_PREFIX: ${{ inputs.tag_prefix }}
+        DRY_RUN: ${{ inputs.dry_run }}
+        BUMP: ${{ steps.commit_msg.outputs.release_type }}
+        REPO_NAME: ${{ github.repository }}
+        GITHUB_API_URL_BASE: ${{ github.api_url }}
+      run: |
+        API_URL="${GITHUB_API_URL_BASE}/repos/${REPO_NAME}"
+        AUTH_HEADER="Authorization: token ${GITHUB_TOKEN}"
+
+        # Get latest release tag
+        LATEST_TAG=$(curl -s -H "${AUTH_HEADER}" "${API_URL}/releases/latest" | jq -r '.tag_name // empty')
+
+        if [ -z "${LATEST_TAG}" ]; then
+          MAJOR=0; MINOR=0; PATCH=0
+        else
+          VERSION="${LATEST_TAG#${TAG_PREFIX}}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${VERSION}"
+        fi
+
+        case "${BUMP}" in
+          major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+          minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+          patch) PATCH=$((PATCH + 1)) ;;
+        esac
+
+        NEW_TAG="${TAG_PREFIX}${MAJOR}.${MINOR}.${PATCH}"
+        SHORT_NAME="$(echo "${REPO_NAME}" | sed 's/.*\///')"
+        RELEASE_NAME="${SHORT_NAME} release ${MAJOR}.${MINOR}.${PATCH} (${NEW_TAG})"
+
+        echo "tag_name=${NEW_TAG}" >> ${GITHUB_OUTPUT}
+
+        if [ "${DRY_RUN}" == "true" ]; then
+          echo "Dry run: would create release ${NEW_TAG} with name '${RELEASE_NAME}'"
+        else
+          # Generate release notes
+          NOTES_PAYLOAD=$(jq -n --arg tag "${NEW_TAG}" '{"tag_name": $tag}')
+          RELEASE_NOTES=$(curl -s -H "${AUTH_HEADER}" -X POST "${API_URL}/releases/generate-notes" \
+            -d "${NOTES_PAYLOAD}" | jq -r '.body // ""')
+
+          # Create release
+          PAYLOAD=$(jq -n \
+            --arg tag "${NEW_TAG}" \
+            --arg name "${RELEASE_NAME}" \
+            --arg body "${RELEASE_NOTES}" \
+            '{"tag_name": $tag, "name": $name, "body": $body}')
+
+          curl -s -H "${AUTH_HEADER}" -X POST "${API_URL}/releases" -d "${PAYLOAD}"
+        fi
 
     - name: Checkout repository
       if: inputs.add_tags == 'true' && inputs.dry_run != 'true'
